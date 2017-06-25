@@ -1,0 +1,126 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "E Kenny"
+date: "25 June 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Excersise Quality Identification - Courtesy of Machine Learning
+
+As the assignment observes: 'Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.... One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.' In this project, my goal was to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways:  
+-classe 'A' = Doing it right - Perfect Execution  
+-classe 'B' = Doing it wrong - Throwing the elbows to the front  
+-classe 'C' = Doing it wrong - Lifting the dumbell only halfway  
+-classe 'D' = Doing it wrong - Lowering the dumbell only halfway  
+-classe 'E' = Doing it wrong - Throwing the hips to the front  
+
+## How I built my model:  
+Initial exploratory data analysis (plotting, viewing the structure, head and tail of the data), sectioning the training data into a traning set and a testing set for the purposes of effective cross validation. Training the data first with the rpart method (which proved unsatisfactory). Successfully training the data using the random forest method which successfully identified all five classes and acheived an accuracy rate of 93%.  
+
+##How I used cross validation:   
+Although the data were provided in seperate train and test sets, I sectioned the train data into test and train data sets. This strategy is good practice and allowed me to test on my own data set before validating further on the provided test data set.  
+
+##What I think the expected out of sample error is:  
+5% OOB estimate of error rate.  
+
+##Why I made the choices I did:  
+After some initial exploratory data analysis (plotting, viewing the structure, head and tail of the data) I sectioned the training data into a traning set and a testing set for the purposes of effective cross validation. I then removed variables that were unnecessary (names, times, identifiers). After trying to train using the rpart method (which could only identify three of the five classes and had an accuracy rate of 51%) I finally decided on the random forest method which successfully identified all five classes and acheived an accuracy rate of about 95%.
+
+These items are described in more detail as comments within the code below:
+
+
+```{r GettingData, echo=TRUE}
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(rpart)
+
+##Reading csv data into R objects 
+pullTraining <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+                         na.strings=c("NA",""), header=TRUE, stringsAsFactors = TRUE)
+
+pullTesting <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+                        na.strings=c("NA",""), header=TRUE, stringsAsFactors = TRUE)
+
+## Creating test and training sets from the Training data 
+## This is good practice and will make cross validation easier
+inSubTrain = createDataPartition(y=pullTraining$classe, p=0.75, list=FALSE)
+subTrain = pullTraining[inSubTrain,]
+subTest = pullTraining[-inSubTrain,]
+```
+
+Using the whole dataset with all 160 variables made using the random forest function impractical
+Trying the reduce the data set to its most relevant parts. The most relevant components seem to 
+be the classe variable and accelerometer variables
+```{r tidyData }
+
+## Hold classe observations 
+classe <- subTrain$classe
+
+## Trying to keep only columns that contain the string 'accel' indicating data from accelerometers
+paredSubTrain = subTrain[,grepl("*accel",names(subTrain))]
+
+## Adding classe variable back to accel data frame
+classeSubTrain <- cbind(paredSubTrain, classe)
+
+## Removing NAs
+newSubTrain<-na.omit(classeSubTrain)
+```
+
+In order to perform some exploratory data analysis, I created a plot
+```{r expPlot, echo=TRUE}
+qplot(accel_dumbbell_y, accel_belt_z, colour=classe, data=newSubTrain)
+```
+
+I first tried the rpart method:
+```{r rpartTry}
+## Using rpart method on non-NA dataset 
+set.seed(123)
+modFitTry <- train(classe~., method="rpart", data=newSubTrain)
+print(modFitTry)
+print(modFitTry$finalModel)
+plot(modFitTry$finalModel, uniform=TRUE, main="Classification Tree")
+text(modFitTry$finalModel, use.n = TRUE, all=TRUE, cex=.8)
+```
+
+The model from the rpart method was only able to identify three of the five classes
+and the accuracy rating was 0.51 (about 51%). These results indicated that this method was not
+worth pursuing further.
+
+Decided to try the data with the random forest method 
+Setting seed to ensure reproducible data
+```{r randonForest, echo=TRUE}
+set.seed(123)
+fitForestTry <- randomForest(classe~., data = classeSubTrain, na.action = na.roughfix,importance=TRUE)
+
+## Having a look at the model
+## With an Out of Bag (OOB) error rate of 5.12%, this model with almost 95% accuracy 
+## clearly outperforms the rpart model
+print(fitForestTry)
+```
+
+Having a look at variable importance. It is clear that the most important 
+variables are accel_dumbbell_y, accel_belt_z and accel_dumbbell_z
+```{r details}
+print(importance(fitForestTry, type = 2))
+```
+
+Classifying test sample using random forest
+```{r fitTry, echo=TRUE}
+fitForestPred <- predict(fitForestTry, subTest)
+
+## Calculating predictive accuracy
+fitForestPerf <- table(subTest$classe, fitForestPred, dnn=c("Actual", "Predicted"))
+
+## The random forest model's performance is impressive with accuracy of about 93%
+print(fitForestPerf)
+```
+
+
+
+
+
